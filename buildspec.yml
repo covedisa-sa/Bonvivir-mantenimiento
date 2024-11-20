@@ -1,0 +1,37 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - IMAGE_TAG=$CODEBUILD_BUILD_NUMBER"-"$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_PASSWORD
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - echo Image_tag $IMAGE_TAG
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo "Setting up git credentials"
+      - git config --global credential.helper 'store'
+      - echo "https://$GITUSER:$GITPASS@github.com" > ~/.git-credentials
+      - git config --global user.email "admin@covedisa.com.ar"
+      - git config --global user.name "AWS CodeBuild"
+      #- git clone -b master https://github.com/covedisa-sa/Librit-kubernetes.git
+      #- cd Librit-kubernetes
+      #- sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/01-librit-mantenimiento-deployment.yaml
+      - git clone -b prod https://github.com/covedisa-sa/Librit-kubernetes.git
+      - cd Librit-kubernetes
+      - sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/headless/01-librit-mantenimiento-deployment.yaml
+      - sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/portal/01-librit-mantenimiento-deployment.yaml
+      - git commit -am "Imagen $IMAGE_NAME:$IMAGE_TAG"
+      - git push
+      - echo Writing image definitions file...
+      - echo printf '[{"name":"imageapi-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
