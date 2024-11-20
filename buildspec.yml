@@ -3,6 +3,9 @@ version: 0.2
 phases:
   pre_build:
     commands:
+      #- EKS_CLUSTER_NAME="bonvivir"
+      #- EKS_KUBECTL_ROLE_ARN="arn:aws:iam::175753211642:role/bonvivir-test-headless-codebuild-eks-service-role"
+      #- export KUBECONFIG=$HOME/.kube/config
       - echo Logging in to Amazon ECR...
       - aws --version
       - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
@@ -13,25 +16,36 @@ phases:
       - echo Build started on `date`
       - echo Building the Docker image...
       - echo Image_tag $IMAGE_TAG
-      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG --build-arg STACK_ENV=$STACK_ENV .
   post_build:
     commands:
       - echo Build completed on `date`
       - echo Pushing the Docker images...
       - docker push $REPOSITORY_URI:$IMAGE_TAG
+      #- CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
+      #- export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
+      #- export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
+      #- export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
+      #- export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
       - echo "Setting up git credentials"
       - git config --global credential.helper 'store'
       - echo "https://$GITUSER:$GITPASS@github.com" > ~/.git-credentials
       - git config --global user.email "admin@covedisa.com.ar"
       - git config --global user.name "AWS CodeBuild"
-      #- git clone -b master https://github.com/covedisa-sa/Librit-kubernetes.git
-      #- cd Librit-kubernetes
-      #- sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/01-librit-mantenimiento-deployment.yaml
-      - git clone -b prod https://github.com/covedisa-sa/Librit-kubernetes.git
-      - cd Librit-kubernetes
-      - sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/headless/01-librit-mantenimiento-deployment.yaml
-      - sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./librit-mantenimiento/portal/01-librit-mantenimiento-deployment.yaml
+      - git clone https://github.com/covedisa-sa/Bonvivir-kubernetes.git
+      - cd Bonvivir-kubernetes
+      - sed -i "s/${IMAGE_NAME}:.*/${IMAGE_NAME}:${IMAGE_TAG}/" ./bonvivir/headless/$BRANCH/01-headless-deployment.yaml
       - git commit -am "Imagen $IMAGE_NAME:$IMAGE_TAG"
       - git push
+      #- aws eks update-kubeconfig --name $EKS_CLUSTER_NAME
+      #- cat ./kubernetes/03-ReplicationController.yaml
+      #- set
+      #- kubectl apply -f ./01-Namespace.yaml
+      #- kubectl apply -f ./kubernetes/. -n $IMAGE_NAME
       - echo Writing image definitions file...
       - echo printf '[{"name":"imageapi-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+env:
+  exported-variables:
+    - IMAGE_TAG
+#artifacts:
+#    files: imagedefinitions.json
